@@ -31,26 +31,33 @@ python setup.py install
 Example:
 ```python
 import numpy as np
+import torch
 from scatharm.scattering import SolidHarmonicScattering
-from scatharm.utils import generate_sum_of_gaussians
+from scatharm.utils import generate_weighted_sum_of_gaussians
 
-centers = np.zeros((1, 1, 3))
-sigma = 8.
+sigma = 4.
 M, N, O, J, L = 128, 128, 128, 0, 3
+centers = torch.FloatTensor(1, 1, 3).fill_(0)
+weights = torch.FloatTensor(1, 1).fill_(1)
+grid = torch.from_numpy(
+    np.fft.ifftshift(np.mgrid[-M//2:-M//2+M, -N//2:-N//2+N, -O//2:-O//2+O].astype('float32'), axes=(1,2,3)))
+
+x_cpu = generate_weighted_sum_of_gaussians(grid, centers, weights, sigma)
+
 scat = SolidHarmonicScattering(M=M, N=N, O=O, J=J, L=L, sigma_0=sigma)
 
-x = generate_sum_of_gaussians(centers, sigma, M, N ,O)
+s_cpu = scat(x_cpu, order_2=False, method='integral', method_args={'integral_powers': [1]})
+print('CPU integral', s_cpu)
 
-# integral scattering coefficients
-s_cpu = scat(x, order_2=False, method='integral', method_args={'integral_powers': [1]})
-print('CPU', s_cpu)
+x_gpu = x_cpu.cuda()
 s_gpu = scat(x_gpu, order_2=False, method='integral', method_args={'integral_powers': [1]})
-print('GPU', s_gpu)
+print('GPU integral', s_gpu)
 
 # standard scattering coefficients
-s_cpu = scat(x, order_2=False, method='standard')
+s_cpu = scat(x_cpu, order_2=False, method='standard')
+print('CPU standard', s_cpu)
 s_gpu = scat(x_gpu, order_2=False, method='standard')
-print('GPU', s_gpu)
+print('GPU standard', s_gpu)
 ```
 
 ## Contribution
