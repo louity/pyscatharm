@@ -69,7 +69,7 @@ class SolidHarmonicScattering(object):
         filters_l_m_j = self.filters[l][j][m].type(torch.cuda.FloatTensor) if cuda else self.filters[l][j][m]
         return complex_modulus(self._fft_convolve(input, filters_l_m_j))
 
-    def forward(self, input, order_2=True, rotation_covariant=True, method='standard', method_args=None):
+    def _check_input(self, input):
         if not torch.is_tensor(input):
             raise(TypeError('The input should be a torch.cuda.FloatTensor, a torch.FloatTensor or a torch.DoubleTensor'))
 
@@ -81,6 +81,9 @@ class SolidHarmonicScattering(object):
 
         if (input.dim() != 4):
             raise (RuntimeError('Input tensor must be 4D'))
+
+    def forward(self, input, order_2=True, rotation_covariant=True, method='standard', method_args=None):
+        self._check_input(input)
 
         convolution_and_modulus = \
             self._rotation_covariant_convolution_and_modulus if rotation_covariant else self._convolution_and_modulus
@@ -108,5 +111,6 @@ class SolidHarmonicScattering(object):
             return torch.stack(s_order_1, dim=-1), torch.stack(s_order_2, dim=-1)
         return torch.stack(s_order_1, dim=-1)
 
-    def __call__(self, input, order_2=False, method='standard', method_args=None):
-        return self.forward(input, order_2=order_2, method=method, method_args=method_args)
+    def __call__(self, input, order_2=False, rotation_covariant=True, method='standard', method_args=None):
+        return self.forward(input, order_2=order_2, rotation_covariant=rotation_covariant,
+                            method=method, method_args=method_args)
