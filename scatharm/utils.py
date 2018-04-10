@@ -7,9 +7,9 @@ import numpy as np
 import pyfftw
 
 
-def generate_sum_of_diracs(centers, sigma, M, N, O, sigma_dirac=0.5, batch_size=32):
+def generate_sum_of_diracs(centers, M, N, O, sigma_dirac=0.4):
     n_signals = centers.shape[0]
-    signals = torch.FloatTensor(n_signals, M, N, O)
+    signals = torch.FloatTensor(n_signals, M, N, O).fill_(0)
     d_s = [(0, 0, 0), (0, 1, 0), (0, 0, 1), (0, 1, 1), (1, 0, 0), (1, 1, 0), (1, 0, 1), (1, 1, 1)]
     values = torch.FloatTensor(8)
 
