@@ -7,25 +7,35 @@ import numpy as np
 import pyfftw
 
 
-def generate_sum_of_diracs(centers, M, N, O, sigma_dirac=0.4):
-    n_signals = centers.shape[0]
+def generate_weighted_sum_of_diracs(positions, weights, M, N, O, sigma_dirac=0.4):
+    n_signals = positions.shape[0]
     signals = torch.FloatTensor(n_signals, M, N, O).fill_(0)
     d_s = [(0, 0, 0), (0, 1, 0), (0, 0, 1), (0, 1, 1), (1, 0, 0), (1, 1, 0), (1, 0, 1), (1, 1, 1)]
     values = torch.FloatTensor(8)
 
     for i_signal in range(n_signals):
-        n_centers = centers[i_signal].shape[0]
-        for i_center in range(n_centers):
-            center = centers[i_signal, i_center]
-            i, j, k  = torch.floor(center).type(torch.IntTensor)
+        n_positions = positions[i_signal].shape[0]
+        for i_position in range(n_positions):
+            position = positions[i_signal, i_position]
+            i, j, k  = torch.floor(position).type(torch.IntTensor)
             for i_d, (d_i, d_j, d_k) in enumerate(d_s):
                 values[i_d] = np.exp(-0.5 * (
-                    (center[0] - (i+d_i))**2 + (center[1] - (j+d_j))**2 + (center[2] - (k+d_k))**2) / sigma_dirac**2)
-            values /= values.sum()
+                    (position[0] - (i+d_i))**2 + (position[1] - (j+d_j))**2 + (position[2] - (k+d_k))**2) / sigma_dirac**2)
+            values *= weights[i_signal, i_position] / values.sum()
             for i_d, (d_i, d_j, d_k) in enumerate(d_s):
                 signals[i_signal, i+d_i, j+d_j, k+d_k] += values[i_d]
 
     return signals
+
+
+def generate_large_weighted_sum_of_gaussians(positions, weights, M, N, O, fourier_gaussian, fft=None):
+    n_signals = positions.shape[0]
+    signals = torch.FloatTensor(n_signals, M, N, O, 2).fill_(0)
+    signals[..., 0] = generate_weighted_sum_of_diracs(positions, weights, M, N, O)
+
+    if fft is None:
+        fft = Fft3d()
+    return fft(cdgmm3d(fft(signals, inverse=False), fourier_gaussian), inverse=True, normalized=True)
 
 
 def generate_weighted_sum_of_gaussians(grid, positions, weights, sigma, cuda=False):
