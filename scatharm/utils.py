@@ -23,7 +23,8 @@ def generate_weighted_sum_of_diracs(positions, weights, M, N, O, sigma_dirac=0.4
                     (position[0] - (i+d_i))**2 + (position[1] - (j+d_j))**2 + (position[2] - (k+d_k))**2) / sigma_dirac**2)
             values *= weights[i_signal, i_position] / values.sum()
             for i_d, (d_i, d_j, d_k) in enumerate(d_s):
-                signals[i_signal, i+d_i, j+d_j, k+d_k] += values[i_d]
+                i_, j_, k_ = (i+d_i) % M, (j+d_j) % N, (k+d_k) % O
+                signals[i_signal, i_, j_, k_] += values[i_d]
 
     return signals
 
@@ -35,7 +36,7 @@ def generate_large_weighted_sum_of_gaussians(positions, weights, M, N, O, fourie
 
     if fft is None:
         fft = Fft3d()
-    return fft(cdgmm3d(fft(signals, inverse=False), fourier_gaussian), inverse=True, normalized=True)
+    return fft(cdgmm3d(fft(signals, inverse=False), fourier_gaussian), inverse=True, normalized=True)[..., 0]
 
 
 def generate_weighted_sum_of_gaussians(grid, positions, weights, sigma, cuda=False):
@@ -113,7 +114,8 @@ def to_complex(input):
 class Fft3d(object):
     """This class builds a wrapper to 3D FFTW on CPU / cuFFT on nvidia GPU."""
 
-    def __init__(self):
+    def __init__(self, n_fftw_threads=8):
+        self.n_fftw_threads = n_fftw_threads
         self.fftw_cache = defaultdict(lambda: None)
         self.cufft_cache = defaultdict(lambda: None)
 
@@ -136,7 +138,8 @@ class Fft3d(object):
         batch_size, M, N, O, _ = input.size()
         fftw_input_array = pyfftw.empty_aligned((batch_size, M, N, O), dtype='complex64')
         fftw_output_array = pyfftw.empty_aligned((batch_size, M, N, O), dtype='complex64')
-        fftw_object = pyfftw.FFTW(fftw_input_array, fftw_output_array, axes=(1, 2, 3), direction=direction, threads=1)
+        fftw_object = pyfftw.FFTW(fftw_input_array, fftw_output_array, axes=(1, 2, 3), direction=direction,
+                                  threads=self.n_fftw_threads)
         self.fftw_cache[(input.size(), inverse)] = (fftw_input_array, fftw_output_array, fftw_object)
 
     def __call__(self, input, inverse=False, normalized=False):
