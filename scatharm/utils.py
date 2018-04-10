@@ -7,30 +7,44 @@ import numpy as np
 import pyfftw
 
 
-def generate_sum_of_gaussians(centers, sigma, M, N, O, fourier=False):
-    grid = np.fft.ifftshift(np.mgrid[-M//2:-M//2+M, -N//2:-N//2+N, -O//2:-O//2+O].astype('float32'), axes=(1,2,3))
-    if fourier:
-        signals = np.zeros((centers.shape[0], M, N, O), dtype='complex64')
-        grid[0] *= 2*np.pi / M
-        grid[1] *= 2*np.pi / N
-        grid[2] *= 2*np.pi / O
-    else:
-        signals = np.zeros((centers.shape[0], M, N, O), dtype='float32')
+def generate_sum_of_diracs(centers, sigma, M, N, O, sigma_dirac=0.5, batch_size=32):
+    n_signals = centers.shape[0]
+    signals = torch.FloatTensor(n_signals, M, N, O)
+    d_s = [(0, 0, 0), (0, 1, 0), (0, 0, 1), (0, 1, 1), (1, 0, 0), (1, 1, 0), (1, 0, 1), (1, 1, 1)]
+    values = torch.FloatTensor(8)
 
-    for i_signal in range(centers.shape[0]):
+    for i_signal in range(n_signals):
         n_centers = centers[i_signal].shape[0]
         for i_center in range(n_centers):
-            center = centers[i_signal, i_center].reshape((3, 1, 1, 1))
-            if fourier:
-                signals[i_signal] += np.exp(-1j * (grid*center).sum(0))
-            else:
-                signals[i_signal] += np.exp(-0.5 * ((grid - center)**2).sum(0) / sigma**2)
-    if fourier:
-        signals*= np.exp(-0.5 * ((grid*sigma)**2).sum(0))
-        return signals
+            center = centers[i_signal, i_center]
+            i, j, k  = torch.floor(center).type(torch.IntTensor)
+            for i_d, (d_i, d_j, d_k) in enumerate(d_s):
+                values[i_d] = np.exp(-0.5 * (
+                    (center[0] - (i+d_i))**2 + (center[1] - (j+d_j))**2 + (center[2] - (k+d_k))**2) / sigma_dirac**2)
+            values /= values.sum()
+            for i_d, (d_i, d_j, d_k) in enumerate(d_s):
+                signals[i_signal, i+d_i, j+d_j, k+d_k] += values[i_d]
+
+    return signals
+
+
+def generate_weighted_sum_of_gaussians(grid, positions, weights, sigma, cuda=False):
+    _, M, N, O = grid.size()
+    if cuda:
+        signals = torch.cuda.FloatTensor(positions.size(0), M, N, O).fill_(0)
     else:
-        signals /= (2 * np.pi)**1.5 * sigma**3
-        return torch.from_numpy(signals)
+        signals = torch.FloatTensor(positions.size(0), M, N, O).fill_(0)
+
+    for i_signal in range(positions.size(0)):
+        n_points = positions[i_signal].size(0)
+        for i_point in range(n_points):
+            if weights[i_signal, i_point] == 0:
+                break
+            weight = weights[i_signal, i_point]
+            center = positions[i_signal, i_point]
+            signals[i_signal] += weight * torch.exp(
+                -0.5 * ((grid[0]-center[0])**2 + (grid[1]-center[1])**2 + (grid[2]-center[2])**2) / sigma**2)
+    return signals / ((2 * np.pi)**1.5 * sigma**3)
 
 
 def subsample(input, j):
@@ -121,15 +135,16 @@ class Fft3d(object):
                 raise(TypeError('The input should be a torch.cuda.FloatTensor, \
                                 torch.FloatTensor or a torch.DoubleTensor'))
             else:
-                f = lambda x: np.stack((np.real(x), np.imag(x)), axis=len(x.shape))
+                f = lambda x: np.stack([x.real, x.imag], axis=len(x.shape))
                 if(self.fftw_cache[(input.size(), inverse)] is None):
                     self.buildFftwCache(input, inverse)
                 input_arr, output_arr, fftw_obj = self.fftw_cache[(input.size(), inverse)]
 
-                input_arr[:] = input[..., 0].numpy() + 1.0j * input[..., 1].numpy()
+                input_arr.real[:] = input[..., 0]
+                input_arr.imag[:] = input[..., 1]
                 fftw_obj()
 
-                return torch.from_numpy(f(output_arr).astype(input.numpy().dtype))
+                return torch.from_numpy(f(output_arr))
 
         assert input.is_contiguous()
         output = input.new(input.size())
