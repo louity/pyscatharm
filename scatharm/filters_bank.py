@@ -25,7 +25,7 @@ def solid_harmonic_filters_bank(M, N, O, J, L, sigma_0, fourier=True):
 
 
 def gaussian_filters_bank(M, N, O, J, sigma_0, fourier=True):
-    gaussians = torch.zeros(J+1, M, N, O, 2)
+    gaussians = torch.FloatTensor(J+1, M, N, O, 2).fill_(0)
     for j in range(J+1):
         sigma = sigma_0 * 2**j
         gaussian = gaussian_3d(M, N, O, sigma, fourier=fourier)
@@ -36,15 +36,16 @@ def gaussian_filters_bank(M, N, O, J, sigma_0, fourier=True):
 def gaussian_3d(M, N, O, sigma, fourier=True):
     """Computes gaussian in Fourier or signal space."""
     grid = np.mgrid[-M//2:-M//2+M, -N//2:-N//2+N, -O//2:-O//2+O].astype('float32')
+    _sigma = sigma
     if fourier:
         grid[0] *= 2 * np.pi / M
         grid[1] *= 2 * np.pi / N
         grid[2] *= 2 * np.pi / O
-        sigma = 1. / sigma
+        _sigma = 1. / sigma
 
-    gaussian = np.exp(-0.5 * (grid**2).sum(0) / sigma**2)
+    gaussian = np.exp(-0.5 * (grid**2).sum(0) / _sigma**2)
     if not fourier:
-        gaussian /= (2 * np.pi)**1.5 * sigma**3
+        gaussian /= (2 * np.pi)**1.5 * _sigma**3
 
     return np.fft.ifftshift(gaussian)
 
@@ -67,22 +68,24 @@ def solid_harmonic_3d(M, N, O, sigma, l, fourier=True):
     """
     solid_harm = np.zeros((2*l+1, M, N, O), np.complex64)
     grid = np.mgrid[-M//2:-M//2+M, -N//2:-N//2+N, -O//2:-O//2+O].astype('float32')
+    _sigma = sigma
 
     if fourier:
         grid[0] *= 2 * np.pi / M
         grid[1] *= 2 * np.pi / N
         grid[2] *= 2 * np.pi / O
-        sigma = 1. / sigma
+        _sigma = 1. / sigma
 
     r_square = (grid**2).sum(0)
+    r_power_l = np.sqrt(r_square)**l
+    gaussian = np.exp(-0.5 * r_square / _sigma**2).astype('complex64')
 
     if l == 0:
-        gaussian = np.exp(-0.5 * r_square / sigma**2).reshape((1, M, N, O)).astype('complex64')
         if fourier:
-            return gaussian
-        return gaussian / ((2 *np.pi)**1.5 * sigma**3)
+            return gaussian.reshape((1, M, N, O))
+        return gaussian.reshape((1, M, N, O)) / ((2 *np.pi)**1.5 * _sigma**3)
 
-    polynomial_gaussian = r_square**(0.5*l) / sigma**l * np.exp(-0.5 * r_square / sigma**2)
+    polynomial_gaussian = r_power_l * gaussian / _sigma**l
 
     polar, azimuthal = get_3d_angles(grid)
 
@@ -97,8 +100,8 @@ def solid_harmonic_3d(M, N, O, sigma, l, fourier=True):
     if fourier:
         norm_factor *= (2 * np.pi)**1.5 * (-1j)**l
     else:
-        norm_factor /= sigma**3
+        norm_factor /= _sigma**3
 
     solid_harm *= norm_factor
 
-    return np.fft.ifftshift(solid_harm)
+    return np.fft.ifftshift(solid_harm, axes=(1,2,3))
