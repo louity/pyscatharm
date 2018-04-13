@@ -44,21 +44,17 @@ def evaluate_bilinear_regression(scat_1, scat_2, target):
     print('test RMSE: ', np.sqrt(loss.data[0])*y_factor)
 
 
-def evaluate_linear_regression(scat_1, scat_2, target):
-    x_1 = scat_1
-    x_1_2 = np.concatenate([x_1, scat_2], axis=1)
-    lin_regressor = linear_model.LinearRegression()
-    scat_1_prediction = model_selection.cross_val_predict(lin_regressor, x_1, target)
-    scat_1_MAE = np.mean(np.abs(scat_1_prediction - target))
-    scat_1_RMSE = np.sqrt(np.mean((scat_1_prediction - target)**2))
-    print('''scattering order 1, linear regression,
-          MAE: {}, RMSE: {} (kcal.mol-1)'''.format(scat_1_MAE, scat_1_RMSE))
-
-    scat_1_2_prediction = model_selection.cross_val_predict(lin_regressor, x_1_2, target)
-    scat_1_2_MAE = np.mean(np.abs(scat_1_2_prediction - target))
-    scat_1_2_RMSE = np.sqrt(np.mean((scat_1_2_prediction - target)**2))
-    print('''scattering order 1 and 2, linear regression,
-          MAE: {}, RMSE: {} (kcal.mol-1)'''.format(scat_1_2_MAE, scat_1_2_RMSE))
+def evaluate_linear_regression(scat, target):
+    alphas = 10.**(-np.arange(5, 15))
+    maes = np.zeros_like(alphas)
+    x_tr, x_te, y_tr, y_te = model_selection.train_test_split()
+    for i, alpha in enumerate(alphas):
+        ridge = linear_model.Ridge(alpha=alpha)
+        ridge.fit(x_tr, y_tr)
+        maes[i] = np.mean(np.abs(y_te - ridge.predict(x_te)))
+    print('Ridge regression :')
+    for i in range(len(alphas)):
+        print(alphas[i], maes[i])
 
 
 def get_valence(charges):
@@ -170,9 +166,13 @@ np.save('scat_0_' + basename, np_scat_0)
 np.save('scat_1_' + basename, np_scat_1)
 np.save('scat_2_' + basename, np_scat_2)
 
-print('order 1 : {} coef, order 2 : {} coefs'.format(np_scat_1.shape[1], np_scat_2.shape[1]))
+scat = np.concatenate([np_scat_0, np_scat_1, np_scat_2], axis=1)
 target = energies.numpy()
-evaluate_linear_regression(np_scat_1, np_scat_2, target)
+
+print('order 1 : {} coef, order 2 : {} coefs'.format(np_scat_1.shape[1], np_scat_2.shape[1]))
+
+evaluate_linear_regression(scat, target)
+
 evaluate_bilinear_regression(np_scat_1, np_scat_2, target)
 
 
