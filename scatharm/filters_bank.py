@@ -34,7 +34,8 @@ def gaussian_filters_bank(M, N, O, J, sigma_0, fourier=True):
 
 
 def gaussian_3d(M, N, O, sigma, fourier=True):
-    """Computes gaussian in Fourier or signal space."""
+    """Computes gaussian centered in the origin in Fourier or signal space.
+    Index (0,0,0) corresponds to the origin."""
     grid = np.mgrid[-M//2:-M//2+M, -N//2:-N//2+N, -O//2:-O//2+O].astype('float32')
     _sigma = sigma
     if fourier:
