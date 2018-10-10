@@ -51,7 +51,7 @@ def gaussian_3d(M, N, O, sigma, fourier=True):
     return np.fft.ifftshift(gaussian)
 
 
-def solid_harmonic_3d(M, N, O, sigma, l, fourier=True):
+def solid_harmonic_3d(M, N, O, sigma, l, fourier=True, align_max=False):
     """Computes solid harmonic wavelets in Fourier or signal space.
 
     Input args:
@@ -69,13 +69,16 @@ def solid_harmonic_3d(M, N, O, sigma, l, fourier=True):
     """
     solid_harm = np.zeros((2*l+1, M, N, O), np.complex64)
     grid = np.mgrid[-M//2:-M//2+M, -N//2:-N//2+N, -O//2:-O//2+O].astype('float32')
+    grid = np.fft.ifftshift(grid, axes=(1,2,3))
     _sigma = sigma
+    if align_max and l > 0:
+        _sigma /= np.sqrt(l)
 
     if fourier:
         grid[0] *= 2 * np.pi / M
         grid[1] *= 2 * np.pi / N
         grid[2] *= 2 * np.pi / O
-        _sigma = 1. / sigma
+        _sigma = 1. / _sigma
 
     r_square = (grid**2).sum(0)
     r_power_l = np.sqrt(r_square)**l
@@ -105,4 +108,4 @@ def solid_harmonic_3d(M, N, O, sigma, l, fourier=True):
 
     solid_harm *= norm_factor
 
-    return np.fft.ifftshift(solid_harm, axes=(1,2,3))
+    return solid_harm
