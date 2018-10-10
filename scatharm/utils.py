@@ -39,6 +39,29 @@ def generate_large_weighted_sum_of_gaussians(positions, weights, M, N, O, fourie
     return fft(cdgmm3d(fft(signals, inverse=False), fourier_gaussian), inverse=True, normalized=True)[..., 0]
 
 
+def generate_weighted_sum_of_gaussians_in_fourier_space(grid, positions, weights, sigma, cuda=False):
+    _, M, N, O = grid.size()
+    if cuda:
+        signals = torch.cuda.FloatTensor(positions.size(0), M, N, O, 2).fill_(0)
+    else:
+        signals = torch.FloatTensor(positions.size(0), M, N, O, 2).fill_(0)
+
+    gaussian = torch.exp(-0.5 * sigma**2 * (grid**2).sum(0))
+
+    for i_signal in range(positions.size(0)):
+        n_points = positions[i_signal].size(0)
+        for i_point in range(n_points):
+            if weights[i_signal, i_point] == 0:
+                break
+            weight = weights[i_signal, i_point]
+            center = positions[i_signal, i_point]
+            grid_dot_center = -(grid[0]*center[0] + grid[1]*center[1] + grid[2]*center[2])
+            signals[i_signal, ..., 0] += weight * gaussian * torch.cos(grid_dot_center)
+            signals[i_signal, ..., 1] += weight * gaussian * torch.sin(grid_dot_center)
+
+    return signals
+
+
 def generate_weighted_sum_of_gaussians(grid, positions, weights, sigma, cuda=False):
     _, M, N, O = grid.size()
     if cuda:
