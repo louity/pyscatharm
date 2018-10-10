@@ -3,7 +3,7 @@
 import torch
 import unittest
 import numpy as np
-from scatharm.filters_bank import gaussian_3d
+from scatharm.filters_bank import gaussian_3d, solid_harmonic_filters_bank
 from scatharm.scattering import SolidHarmonicScattering
 from scatharm import utils as sl
 
@@ -25,25 +25,44 @@ class TestScattering(unittest.TestCase):
             self.assertAlmostEqual(a, c, places=6)
 
 
+    def testSolidHarmonicFFT3d(self):
+        # test that solid harmonic fourier inverse fourier transform corresponds to the formula
+        M, N, O = 192, 128, 96
+        sigma, J, L = 3., 0, 1
+        solid_harmonics = solid_harmonic_filters_bank(M, N, O, J, L, sigma, fourier=False)
+        solid_harmonics_fourier = solid_harmonic_filters_bank(M, N, O, J, L, sigma, fourier=True)
+        fft3d = sl.Fft3d()
+        for gpu in [False, True]:
+            for l in range(L+1):
+                for m in range(2*l+1):
+                    solid_harm = solid_harmonics[l][0:1,m]
+                    solid_harm_fourier = solid_harmonics_fourier[l][0:1,m]
+                    if gpu:
+                        solid_harm = solid_harm.cuda()
+                        solid_harm_fourier = solid_harm_fourier.cuda()
+                    solid_harm_ = fft3d(solid_harm_fourier, inverse=True, normalized=True)
+                    self.assertAlmostEqual(torch.norm(solid_harm - solid_harm_), 0, places=7)
+
+
     def testSolidHarmonicScattering(self):
         # Compare value to analytical formula in the case of a single Gaussian
         centers = torch.FloatTensor(1, 1, 3).fill_(0)
         weights = torch.FloatTensor(1, 1).fill_(1)
         sigma_gaussian = 3.
         sigma_0_wavelet = 3.
-        M, N, O, J, L = 128, 128, 128, 1, 3
+        M, N, O, J, L = 128, 128, 128, 1, 4
         grid = torch.from_numpy(
             np.fft.ifftshift(np.mgrid[-M//2:-M//2+M, -N//2:-N//2+N, -O//2:-O//2+O].astype('float32'), axes=(1,2,3)))
         x = sl.generate_weighted_sum_of_gaussians(grid, centers, weights, sigma_gaussian)
         scat = SolidHarmonicScattering(M=M, N=N, O=O, J=J, L=L, sigma_0=sigma_0_wavelet)
         args = {'integral_powers': [1]}
-        s = scat(x, order_2=False, method='integral', method_args=args)
+        s_order_0, s_order_1 = scat(x, order_2=False, method='integral', method_args=args)
 
         for j in range(J+1):
             sigma_wavelet = sigma_0_wavelet*2**j
             k = sigma_wavelet / np.sqrt(sigma_wavelet**2 + sigma_gaussian**2)
             for l in range(1, L+1):
-                self.assertAlmostEqual(s[0, 0, j, l], k**l, places=4)
+                self.assertAlmostEqual(s_order_1[0, 0, j, l], k**l, places=4)
 
 
     def testLowPassFilter(self):
