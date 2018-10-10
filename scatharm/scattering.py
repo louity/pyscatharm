@@ -24,8 +24,9 @@ class SolidHarmonicScattering(object):
         self.gaussian_filters = gaussian_filters_bank(self.M, self.N, self.O, self.J+1, sigma_0)
         self.fft = Fft3d()
 
-    def _fft_convolve(self, input, filter):
-        return self.fft(cdgmm3d(self.fft(input, inverse=False), filter), inverse=True, normalized=True)
+    def _fft_convolve(self, input, filter, fourier_input=False):
+        f_input = input if fourier_input else self.fft(input, inverse=False)
+        return self.fft(cdgmm3d(f_input, filter), inverse=True, normalized=True)
 
     def _low_pass_filter(self, input, j):
         cuda = isinstance(input, torch.cuda.FloatTensor)
@@ -56,12 +57,12 @@ class SolidHarmonicScattering(object):
         elif method == 'standard':
             return self._compute_standard_scattering_coefs(input)
 
-    def _rotation_covariant_convolution_and_modulus(self, input, l, j):
+    def _rotation_covariant_convolution_and_modulus(self, input, l, j, fourier_input=False):
         cuda = isinstance(input, torch.cuda.FloatTensor)
         filters_l_j = self.filters[l][j].type(torch.cuda.FloatTensor) if cuda else self.filters[l][j]
         convolution_modulus = input.new(input.size()).fill_(0)
         for m in range(filters_l_j.size(0)):
-            convolution_modulus[..., 0] += (self._fft_convolve(input, filters_l_j[m])**2).sum(-1)
+            convolution_modulus[..., 0] += (self._fft_convolve(input, filters_l_j[m], fourier_input=fourier_input)**2).sum(-1)
         return torch.sqrt(convolution_modulus)
 
     def _convolution_and_modulus(self, input, l, j, m=0):
@@ -69,34 +70,48 @@ class SolidHarmonicScattering(object):
         filters_l_m_j = self.filters[l][j][m].type(torch.cuda.FloatTensor) if cuda else self.filters[l][j][m]
         return complex_modulus(self._fft_convolve(input, filters_l_m_j))
 
-    def _check_input(self, input):
+    def _check_input(self, input, fourier_input=False):
         if not torch.is_tensor(input):
             raise(TypeError('The input should be a torch.cuda.FloatTensor, a torch.FloatTensor or a torch.DoubleTensor'))
 
         if (not input.is_contiguous()):
             input = input.contiguous()
 
-        if((input.size(-1)!=self.O or input.size(-2)!=self.N or input.size(-3)!=self.M)):
-            raise (RuntimeError('Tensor must be of spatial size (%i,%i,%i)!'%(self.M,self.N,self.O)))
+        if fourier_input:
+            if((input.size(-1)!=2 or input.size(-2)!=self.O or input.size(-3)!=self.N or input.size(-4)!=self.M)):
+                raise (RuntimeError('Fourier input tensor must be of spatial size (%i,%i,%i,%i)!'%(self.M,self.N,self.O,2)))
 
-        if (input.dim() != 4):
-            raise (RuntimeError('Input tensor must be 4D'))
+            if (input.dim() != 5):
+                raise (RuntimeError('Fourier input tensor must be 5D'))
+        else:
+            if((input.size(-1)!=self.O or input.size(-2)!=self.N or input.size(-3)!=self.M)):
+                raise (RuntimeError('Tensor must be of spatial size (%i,%i,%i)!'%(self.M,self.N,self.O)))
 
-    def forward(self, input, order_2=True, rotation_covariant=True, method='standard', method_args=None):
-        self._check_input(input)
+            if (input.dim() != 4):
+                raise (RuntimeError('Input tensor must be 4D'))
+
+    def forward(self, input, fourier_input=False, order_2=True, rotation_covariant=True, method='standard', method_args=None):
+        self._check_input(input, fourier_input=fourier_input)
 
         convolution_and_modulus = \
             self._rotation_covariant_convolution_and_modulus if rotation_covariant else self._convolution_and_modulus
         compute_scattering_coefs = self._compute_scattering_coefs
 
+        if fourier_input:
+            _input = input
+            s_order_0 = compute_scattering_coefs(
+                torch.abs(self.fft(_input, inverse=True, normalized=True)), method, method_args, self.J)
+        else:
+            _input = to_complex(input)
+            s_order_0 = compute_scattering_coefs(_input, method, method_args, self.J)
+
         s_order_1 = []
         s_order_2 = []
-        _input = to_complex(input)
 
         for l in range(self.L+1):
             s_order_1_l, s_order_2_l = [], []
             for j_1 in range(self.J+1):
-                conv_modulus = convolution_and_modulus(_input, l, j_1)
+                conv_modulus = convolution_and_modulus(_input, l, j_1, fourier_input=fourier_input)
                 s_order_1_l.append(compute_scattering_coefs(conv_modulus, method, method_args, j_1))
                 if not order_2:
                     continue
@@ -108,9 +123,9 @@ class SolidHarmonicScattering(object):
                 s_order_2.append(torch.cat(s_order_2_l, -1))
 
         if order_2:
-            return torch.stack(s_order_1, dim=-1), torch.stack(s_order_2, dim=-1)
-        return torch.stack(s_order_1, dim=-1)
+            return s_order_0, torch.stack(s_order_1, dim=-1), torch.stack(s_order_2, dim=-1)
+        return s_order_0, torch.stack(s_order_1, dim=-1)
 
-    def __call__(self, input, order_2=False, rotation_covariant=True, method='standard', method_args=None):
-        return self.forward(input, order_2=order_2, rotation_covariant=rotation_covariant,
+    def __call__(self, input, fourier_input=False, order_2=False, rotation_covariant=True, method='standard', method_args=None):
+        return self.forward(input, fourier_input=fourier_input, order_2=order_2, rotation_covariant=rotation_covariant,
                             method=method, method_args=method_args)
