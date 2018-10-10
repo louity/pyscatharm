@@ -24,6 +24,43 @@ class TestScattering(unittest.TestCase):
             c = y[:,0,0,0].sum()
             self.assertAlmostEqual(a, c, places=6)
 
+    def testSumOfGaussianFFT3d(self):
+        # Check the validity of Fourier transform of sum of gaussians
+        _N = 128
+        M, N, O = _N, _N, _N
+        sigma = 2.
+        n_gaussians = 10
+        np_grid = np.fft.ifftshift(
+            np.mgrid[-M//2:-M//2+M, -N//2:-N//2+N, -O//2:-O//2+O].astype('float32'), axes=(1,2,3))
+        np_fourier_grid = np_grid.copy()
+        np_fourier_grid[0] *= 2*np.pi / M
+        np_fourier_grid[1] *= 2*np.pi / N
+        np_fourier_grid[2] *= 2*np.pi / O
+        grid = torch.from_numpy(np_grid)
+        grid_gpu = grid.cuda()
+        fourier_grid = torch.from_numpy(np_fourier_grid)
+        fourier_grid_gpu = fourier_grid.cuda()
+
+        positions = torch.FloatTensor(1, n_gaussians, 3).uniform_(-0.5 * _N + 5*sigma, 0.5 * _N - 5*sigma)
+        positions[...,2].fill_(0)
+        weights = torch.FloatTensor(1, n_gaussians).uniform_(1, 10)
+
+        fft3d = sl.Fft3d()
+
+        for gpu in [False, True]:
+            if gpu:
+                _grid = grid_gpu
+                _fourier_grid = fourier_grid_gpu
+            else:
+                _grid = grid
+                _fourier_grid = fourier_grid
+            sum_of_gauss = sl.generate_weighted_sum_of_gaussians(
+                _grid, positions, weights, sigma, cuda=gpu)
+            sum_of_gauss_fourier = sl.generate_weighted_sum_of_gaussians_in_fourier_space(
+                _fourier_grid, positions, weights, sigma, cuda=gpu)
+            sum_of_gauss_ = fft3d(sum_of_gauss_fourier, inverse=True, normalized=True)[..., 0]
+            self.assertAlmostEqual(torch.norm(sum_of_gauss - sum_of_gauss_), 0, places=5)
+
 
     def testSolidHarmonicFFT3d(self):
         # test that solid harmonic fourier inverse fourier transform corresponds to the formula
