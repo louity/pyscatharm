@@ -106,17 +106,16 @@ if cuda:
     fourier_grid = fourier_grid.cuda()
 overlapping_precision = 1e-1
 sigma = 1.5
-J, L = 2, 3
+J, L = 3, 3
 integral_powers = [0.5, 1., 2., 3.]
 args = {'integral_powers': integral_powers}
-sigma_0 = get_sigma_0_wavelet(sigma, overlapping_precision)
 pos, atomic_numbers, atom_valences, electron_valences = get_qm7_positions_energies_and_charges(
         M, N, O, J, L, sigma, overlapping_precision)
 
 n_molecules = pos.size(0)
 n_batches = np.ceil(n_molecules / batch_size).astype(int)
 
-scat = SolidHarmonicScattering(M=M, N=N, O=O, J=J, L=L, sigma_0=sigma_0)
+scat = SolidHarmonicScattering(M=M, N=N, O=O, J=J, L=L, sigma_0=sigma)
 
 scat_0, scat_1, scat_2 = [], [], []
 print('Computing solid harmonic scattering coefficients of molecules '
@@ -137,15 +136,15 @@ for i in tqdm(range(n_batches)):
             atomic_number_fourier_density_batch, fourier_input=True,
             order_2=True, method='integral', method_args=args)
 
-    # # atom valence batch
-    # atom_valence_batch = atom_valences[start:end]
-    # atom_valence_density_batch = generate_weighted_sum_of_gaussians(
-            # grid, pos_batch, atom_valence_batch, sigma, cuda=cuda)
-    # atom_valence_scat_0 = compute_integrals(atom_valence_density_batch, integral_powers)
-    # atom_valence_scat_1, atom_valence_scat_2 = scat(atom_valence_density_batch, order_2=True,
-                                  # method='integral', method_args=args)
+    # atomic valence channel
+    atom_valence_batch = atom_valences[start:end]
+    atom_valence_density_batch = generate_weighted_sum_of_gaussians_in_fourier_space(
+            fourier_grid, pos_batch, atom_valence_batch, sigma, cuda=cuda)
+    atom_valence_scat_0, atom_valence_scat_1, atom_valence_scat_2 = scat(
+            atom_valence_density_batch, fourier_input=True, order_2=True,
+            method='integral', method_args=args)
 
-    # # electron valence batch
+    # electron valence channel
     electron_valence_batch = electron_valences[start:end]
     electron_valence_fourier_density_batch = generate_weighted_sum_of_gaussians_in_fourier_space(
             fourier_grid, pos_batch, electron_valence_batch, sigma, cuda=cuda)
@@ -153,16 +152,18 @@ for i in tqdm(range(n_batches)):
             electron_valence_fourier_density_batch, fourier_input=True,
             order_2=True, method='integral', method_args=args)
 
-    # # old core channel
+    # core electrons channel
     core_fourier_density_batch = atomic_number_fourier_density_batch - electron_valence_fourier_density_batch
     core_scat_0, core_scat_1, core_scat_2 = scat(
             core_fourier_density_batch, fourier_input=True, order_2=True,
             method='integral', method_args=args)
 
-    scat_0.append(torch.cat([atomic_number_scat_0, electron_valence_scat_0, core_scat_0], dim=-1))
-
-    scat_1.append(torch.stack([atomic_number_scat_1, electron_valence_scat_1, core_scat_1], dim=-1))
-    scat_2.append(torch.stack([atomic_number_scat_2, electron_valence_scat_2, core_scat_2], dim=-1))
+    scat_0.append(
+        torch.cat([atomic_number_scat_0, atom_valence_scat_0, electron_valence_scat_0, core_scat_0], dim=-1))
+    scat_1.append(
+        torch.stack([atomic_number_scat_1, atom_valence_scat_1, electron_valence_scat_1, core_scat_1], dim=-1))
+    scat_2.append(
+        torch.stack([atomic_number_scat_2, atom_valence_scat_2, electron_valence_scat_2, core_scat_2], dim=-1))
 
 scat_0 = torch.cat(scat_0, dim=0)
 scat_1 = torch.cat(scat_1, dim=0)
