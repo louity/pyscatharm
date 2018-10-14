@@ -65,9 +65,10 @@ class TestScattering(unittest.TestCase):
     def testSolidHarmonicFFT3d(self):
         # test that solid harmonic fourier inverse fourier transform corresponds to the formula
         M, N, O = 192, 128, 96
-        sigma, J, L = 3., 0, 1
-        solid_harmonics = solid_harmonic_filters_bank(M, N, O, J, L, sigma, fourier=False)
-        solid_harmonics_fourier = solid_harmonic_filters_bank(M, N, O, J, L, sigma, fourier=True)
+        sigma, L = 3., 1
+        j_values = [0]
+        solid_harmonics = solid_harmonic_filters_bank(M, N, O, j_values, L, sigma, fourier=False)
+        solid_harmonics_fourier = solid_harmonic_filters_bank(M, N, O, j_values, L, sigma, fourier=True)
         fft3d = sl.Fft3d()
         for gpu in [False, True]:
             for l in range(L+1):
@@ -87,19 +88,19 @@ class TestScattering(unittest.TestCase):
         weights = torch.FloatTensor(1, 1).fill_(1)
         sigma_gaussian = 3.
         sigma_0_wavelet = 3.
-        M, N, O, J, L = 128, 128, 128, 1, 4
+        M, N, O, j_values, L = 128, 128, 128, [0, 1], 4
         grid = torch.from_numpy(
             np.fft.ifftshift(np.mgrid[-M//2:-M//2+M, -N//2:-N//2+N, -O//2:-O//2+O].astype('float32'), axes=(1,2,3)))
         x = sl.generate_weighted_sum_of_gaussians(grid, centers, weights, sigma_gaussian)
-        scat = SolidHarmonicScattering(M=M, N=N, O=O, J=J, L=L, sigma_0=sigma_0_wavelet)
+        scat = SolidHarmonicScattering(M=M, N=N, O=O, j_values=j_values, L=L, sigma_0=sigma_0_wavelet)
         args = {'integral_powers': [1]}
         s_order_0, s_order_1 = scat(x, order_2=False, method='integral', method_args=args)
 
-        for j in range(J+1):
+        for i_j, j in enumerate(j_values):
             sigma_wavelet = sigma_0_wavelet*2**j
             k = sigma_wavelet / np.sqrt(sigma_wavelet**2 + sigma_gaussian**2)
             for l in range(1, L+1):
-                self.assertAlmostEqual(s_order_1[0, 0, j, l], k**l, places=4)
+                self.assertAlmostEqual(s_order_1[0, 0, i_j, l], k**l, places=4)
 
 
     def testLowPassFilter(self):
@@ -108,15 +109,15 @@ class TestScattering(unittest.TestCase):
         weights = torch.FloatTensor(1, 1).fill_(1)
         sigma_gaussian = 3.
         sigma_0_wavelet = 3.
-        M, N, O, J, L = 128, 128, 128, 2, 0
+        M, N, O, j_values, L = 128, 128, 128, [0, 1, 2], 0
         grid = torch.from_numpy(
             np.fft.ifftshift(np.mgrid[-M//2:-M//2+M, -N//2:-N//2+N, -O//2:-O//2+O].astype('float32'), axes=(1,2,3)))
         x = torch.FloatTensor(1, M, N, O, 2).fill_(0)
         x[..., 0] = sl.generate_weighted_sum_of_gaussians(grid, centers, weights, sigma_gaussian)
-        scat = SolidHarmonicScattering(M=M, N=N, O=O, J=J, L=L, sigma_0=sigma_0_wavelet)
+        scat = SolidHarmonicScattering(M=M, N=N, O=O, j_values=j_values, L=L, sigma_0=sigma_0_wavelet)
 
-        for j in range(J+1):
-            convolved_gaussian = scat._low_pass_filter(x, j)
+        for i_j, j in enumerate(j_values):
+            convolved_gaussian = scat._low_pass_filter(x, i_j)
 
             sigma_convolved_gaussian = np.sqrt(sigma_gaussian**2 + (sigma_0_wavelet*2**j)**2)
             true_convolved_gaussian = torch.FloatTensor(1, M, N, O, 2).fill_(0)

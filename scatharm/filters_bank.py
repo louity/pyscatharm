@@ -11,25 +11,25 @@ from scipy.special import sph_harm, factorial
 from .utils import get_3d_angles, double_factorial
 
 
-def solid_harmonic_filters_bank(M, N, O, J, L, sigma_0, fourier=True):
+def solid_harmonic_filters_bank(M, N, O, j_values, L, sigma_0, fourier=True):
     filters = []
     for l in range(L+1):
-        filters_l = np.zeros((J+1, 2*l+1, M, N, O, 2), dtype='float32')
-        for j in range(J+1):
+        filters_l = np.zeros((len(j_values), 2*l+1, M, N, O, 2), dtype='float32')
+        for i_j, j in enumerate(j_values):
             sigma = sigma_0 * 2**j
             solid_harm = solid_harmonic_3d(M, N, O, sigma, l, fourier=fourier)
-            filters_l[j, :, :, :, :, 0] = solid_harm.real
-            filters_l[j, :, :, :, :, 1] = solid_harm.imag
+            filters_l[i_j, :, :, :, :, 0] = solid_harm.real
+            filters_l[i_j, :, :, :, :, 1] = solid_harm.imag
         filters.append(torch.from_numpy(filters_l))
     return filters
 
 
-def gaussian_filters_bank(M, N, O, J, sigma_0, fourier=True):
-    gaussians = torch.FloatTensor(J+1, M, N, O, 2).fill_(0)
-    for j in range(J+1):
+def gaussian_filters_bank(M, N, O, j_values, sigma_0, fourier=True):
+    gaussians = torch.FloatTensor(len(j_values), M, N, O, 2).fill_(0)
+    for i_j, j in enumerate(j_values):
         sigma = sigma_0 * 2**j
         gaussian = gaussian_3d(M, N, O, sigma, fourier=fourier)
-        gaussians[j, :, :, :, 0] = torch.from_numpy(gaussian)
+        gaussians[i_j, :, :, :, 0] = torch.from_numpy(gaussian)
     return gaussians
 
 
