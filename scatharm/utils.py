@@ -195,7 +195,7 @@ class Fft3d(object):
         return output
 
 
-def cdgmm3d(A, B):
+def cdgmm3d(A, B, conjugate=False):
     """Pointwise multiplication of complex tensors."""
     A, B = A.contiguous(), B.contiguous()
 
@@ -213,7 +213,11 @@ def cdgmm3d(A, B):
 
     C = A.new(A.size())
 
+    if conjugate:
+        C[..., 0] = A[..., 0] * B[..., 0] + A[..., 1] * B[..., 1]
+        C[..., 1] = A[..., 0] * B[..., 1] - A[..., 1] * B[..., 0]
+        return C
+
     C[..., 0] = A[..., 0] * B[..., 0] - A[..., 1] * B[..., 1]
     C[..., 1] = A[..., 0] * B[..., 1] + A[..., 1] * B[..., 0]
-
     return C
