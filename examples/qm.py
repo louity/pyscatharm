@@ -1,88 +1,10 @@
 import numpy as np
 import torch
 from tqdm import tqdm
-from cheml.datasets import load_qm7
-from sklearn import linear_model, model_selection, preprocessing, pipeline
-from scipy.spatial.distance import pdist
 from scatharm.scattering import SolidHarmonicScattering
 from scatharm.utils import generate_weighted_sum_of_gaussians_in_fourier_space
 
-
-def evaluate_linear_regression(scat, target, cross_val_folds, alphas=10.**(-np.arange(0, 10))):
-    for i, alpha in enumerate(alphas):
-        regressor = pipeline.make_pipeline(preprocessing.StandardScaler(), linear_model.Ridge(alpha=alpha))
-        scat_prediction = model_selection.cross_val_predict(regressor, X=scat, y=target, cv=cross_val_folds)
-        scat_MAE = np.mean(np.abs(scat_prediction - target))
-        scat_RMSE = np.sqrt(np.mean((scat_prediction - target)**2))
-        print('Ridge regression, alpha: {}, MAE: {}, RMSE: {}'.format(
-            alpha, scat_MAE, scat_RMSE))
-
-
-def get_electron_valences(atomic_numbers):
-    assert np.all(atomic_numbers >= 0), "atomic number must be positive"
-    assert np.all(atomic_numbers < 19), "valence electrons computation not implemented for atomic number gt 18"
-    return (
-        atomic_numbers * (atomic_numbers <= 2) +
-        (atomic_numbers - 2) * np.logical_and(atomic_numbers > 2, atomic_numbers <= 10) +
-        (atomic_numbers - 10) * np.logical_and(atomic_numbers > 8, atomic_numbers <= 18))
-
-
-def get_atom_valences(atomic_numbers):
-    #FIXME: arbitrary choices have been made for N (valence max 5) and Cl (valence max 7)
-    assert np.all(atomic_numbers >= 0), "atomic number must be positive"
-    return (
-        np.isin(atomic_numbers, [1, 3, 9, 17, 11, 19, 37, 55, 87]) * 1 + # H, Li, F, Cl, Na, K, Rb, Cs, Fr
-        np.isin(atomic_numbers, [4, 8, 12, 20, 38]) * 2 + # Be, O, Mg, Ca, Sr
-        np.isin(atomic_numbers, [5, 7, 13, 21, 31, 39]) * 3 + # B, N, Al, Sc, Ga, Y
-        np.isin(atomic_numbers, [6, 14, 22, 32, 40, 50, 72, 82]) * 4 + # C, Si, Ti, Ge, Zr, Sn, Hf, Pb
-        np.isin(atomic_numbers, [15, 23, 33]) * 5 + # P, V, As
-        np.isin(atomic_numbers, [16, 24, 34]) * 6 + # S, Cr, Se
-        np.isin(atomic_numbers, [35, 53]) * 7 # Br, I
-    )
-
-
-def get_sigma_0_wavelet(sigma, overlapping_precision):
-    return sigma * np.sqrt(-2 * np.log(overlapping_precision) - 1)
-
-
-def get_qm7_energies_and_folds(random_folds=False):
-    qm7 = load_qm7(align=True)
-    energies = qm7.T.transpose()
-    n_folds = qm7.P.shape[0]
-    if random_folds:
-        P = np.random.permutation(energies.shape[0]).reshape((n_folds, -1))
-    else:
-        P = qm7.P
-    cross_val_folds = []
-    for i_fold in range(n_folds):
-        fold = (np.concatenate(P[np.arange(n_folds) != i_fold], axis=0), P[i_fold])
-        cross_val_folds.append(fold)
-    return energies, cross_val_folds
-
-
-def get_qm7_positions_energies_and_charges(M, N, O, J, L, sigma, overlapping_precision):
-    qm7 = load_qm7(align=True)
-    positions = qm7.R
-    atomic_numbers = qm7.Z
-    atom_valences = get_atom_valences(atomic_numbers)
-    electron_valences = get_electron_valences(atomic_numbers)
-
-    min_dist = np.inf
-    for i in range(positions.shape[0]):
-        n_atoms = np.sum(atomic_numbers[i] != 0)
-        distances = pdist(positions[i, :n_atoms, :])
-        min_dist = min(min_dist, distances.min())
-
-    delta = sigma * np.sqrt(-8 * np.log(overlapping_precision))
-    print(delta, min_dist)
-
-    positions *= delta / min_dist
-
-    return (
-            torch.from_numpy(positions), torch.from_numpy(atomic_numbers),
-            torch.from_numpy(atom_valences), torch.from_numpy(electron_valences),
-        )
-
+from qm_utils import  evaluate_regression, get_qm_energies_and_folds, get_qm_positions_energies_and_charges
 
 # def main():
     # """Trains a simple linear regression model with solid harmonic
@@ -92,6 +14,7 @@ def get_qm7_positions_energies_and_charges(M, N, O, J, L, sigma, overlapping_pre
     # Achieves a MAE of ... kcal.mol-1
     # """
 
+database = 'qm7'
 cuda = torch.cuda.is_available()
 batch_size = 16
 M, N, O = 192, 128, 96
@@ -106,22 +29,22 @@ if cuda:
     fourier_grid = fourier_grid.cuda()
 overlapping_precision = 1e-1
 sigma = 1.5
-J, L = 3, 3
+j_values, L = [0, 1, 2], 3
 integral_powers = [0.5, 1., 2., 3.]
 args = {'integral_powers': integral_powers}
-pos, atomic_numbers, atom_valences, electron_valences = get_qm7_positions_energies_and_charges(
-        M, N, O, J, L, sigma, overlapping_precision)
+pos, atomic_numbers, atom_valences, electron_valences = get_qm_positions_energies_and_charges(
+        sigma, overlapping_precision, database=database)
 
 n_molecules = pos.size(0)
 n_batches = np.ceil(n_molecules / batch_size).astype(int)
 
-scat = SolidHarmonicScattering(M=M, N=N, O=O, J=J, L=L, sigma_0=sigma)
+scat = SolidHarmonicScattering(M=M, N=N, O=O, j_values=j_values, L=L, sigma_0=sigma)
 
 scat_0, scat_1, scat_2 = [], [], []
-print('Computing solid harmonic scattering coefficients of molecules '
-      'of QM7 database on {}'.format('GPU' if cuda else 'CPU'))
+print('Computing solid harmonic scattering coefficients of {} molecules '
+      'of {} database on {}'.format(n_molecules, database, 'GPU' if cuda else 'CPU'))
 print('batch_size: {}, n_batches: {}'.format(batch_size, n_batches))
-print('L: {}, J: {}, integral powers: {}'.format(L, J, integral_powers))
+print('L: {}, j_values: {}, integral powers: {}'.format(L, j_values, integral_powers))
 
 for i in tqdm(range(n_batches)):
     start, end = i*batch_size, min((i+1)*batch_size, n_molecules)
@@ -180,8 +103,8 @@ np_scat_2 = scat_2.numpy().reshape((end, -1))
 
 scat_0_1_2 = np.concatenate([np_scat_0, np_scat_1, np_scat_2], axis=1)
 
-energies, cross_val_folds = get_qm7_energies_and_folds()
-evaluate_linear_regression(scat_0_1_2, energies, cross_val_folds)
+energies, cross_val_folds = get_qm_energies_and_folds(database=database)
+evaluate_regression(scat_0_1_2, energies, cross_val_folds)
 
 # if __name__ == '__main__':
     # main()
