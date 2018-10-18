@@ -1,8 +1,14 @@
 """Author: Louis Thiry, All rights reserved, 2018."""
 from collections import defaultdict
 
+try:
+    from skcuda import cufft
+    CUDA = True
+except ImportError as err:
+    CUDA = False
+    print('skcuda import error {}, GPU version not working'.format(err))
+
 import torch
-from skcuda import cufft
 import numpy as np
 import pyfftw
 
@@ -41,7 +47,7 @@ def generate_large_weighted_sum_of_gaussians(positions, weights, M, N, O, fourie
 
 def generate_weighted_sum_of_gaussians_in_fourier_space(grid, positions, weights, sigma, cuda=False):
     _, M, N, O = grid.size()
-    if cuda:
+    if cuda and CUDA:
         signals = torch.cuda.FloatTensor(positions.size(0), M, N, O, 2).fill_(0)
     else:
         signals = torch.FloatTensor(positions.size(0), M, N, O, 2).fill_(0)
@@ -64,7 +70,7 @@ def generate_weighted_sum_of_gaussians_in_fourier_space(grid, positions, weights
 
 def generate_weighted_sum_of_gaussians(grid, positions, weights, sigma, cuda=False):
     _, M, N, O = grid.size()
-    if cuda:
+    if cuda and CUDA:
         signals = torch.cuda.FloatTensor(positions.size(0), M, N, O).fill_(0)
     else:
         signals = torch.FloatTensor(positions.size(0), M, N, O).fill_(0)
