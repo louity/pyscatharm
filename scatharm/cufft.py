@@ -1,9 +1,9 @@
-#!/usr/bin/env python
+"""Python interface to CUFFT functions.
 
-"""
-Python interface to CUFFT functions.
-
-Note: this module does not explicitly depend on PyCUDA.
+Taken from scikit-cuda as it is:
+https://github.com/lebedov/scikit-cuda/blob/master/skcuda/cufft.py
+Since this module does not explicitly depend on PyCUDA, importing it directly
+allows not to have PyCUDA dependency for PyScatHarm.
 """
 
 import ctypes

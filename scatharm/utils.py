@@ -6,7 +6,7 @@ import numpy as np
 import pyfftw
 
 if torch.cuda.is_available():
-    from cufft import cufftPlanMany, CUFFT_FORWARD, CUFFT_INVERSE, CUFFT_C2C, CUFFT_Z2Z, cufftExecC2C
+    from .cufft import cufftPlanMany, CUFFT_FORWARD, CUFFT_INVERSE, CUFFT_C2C, CUFFT_Z2Z, cufftExecC2C
     CUDA = True
 else:
     print('CUDA not available in torch, GPU version will not work')
