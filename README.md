@@ -64,7 +64,7 @@ if torch.cuda.is_available():
 
 ## Example scripts
 
-The script `examples/qm.py` computes the Solid Harmonic scattering coefficients of the molecules of the QM7 or QM9 databases. You need to install [CheML](https://github.com/CheML/CheML) to run this example script.
+The script `examples/qm.py` computes the Solid Harmonic scattering coefficients of the molecules of the QM7 or QM9 databases and runs linear regression to predict the atomization energies. You need to install [CheML](https://github.com/CheML/CheML)  and scikit-learn  (`pip install scikit-learn`) to run this example script.
 
 ## Contribution
 

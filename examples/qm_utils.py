@@ -1,14 +1,20 @@
 import numpy as np
 import torch
-from sklearn import linear_model, model_selection, preprocessing, pipeline, kernel_ridge
 from scipy.spatial.distance import pdist
 
+try:
+    from sklearn import linear_model, model_selection, preprocessing, pipeline, kernel_ridge
+except ImportError as err:
+    print('Error importing sklearn {}. '
+        'You need to have sklearn installed to run qm7/9 example : '
+        'pip install scikit-learn'.format(err))
+    exit()
 try:
     from cheml.datasets import load_qm7, load_qm9
 except ImportError as err:
     print('Error importing cheml {}. '
         'You need to have cheml installed to run qm7/9 example : '
-        'https://www.github.com/CheML/CheML'.format(err)) 
+        'https://www.github.com/CheML/CheML'.format(err))
     exit()
 
 def evaluate_regression(scat, target, cross_val_folds, kind='linear', alphas=10.**(-np.arange(0, 10))):
