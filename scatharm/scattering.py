@@ -3,7 +3,7 @@
 __all__ = ['SolidHarmonicScattering']
 
 import torch
-from .utils import cdgmm3d, Fft3d, compute_integrals, subsample, complex_modulus, to_complex
+from .utils import is_cuda_float_tensor, cdgmm3d, Fft3d, compute_integrals, subsample, complex_modulus, to_complex
 from .filters_bank import solid_harmonic_filters_bank, gaussian_filters_bank
 
 
@@ -29,7 +29,7 @@ class SolidHarmonicScattering(object):
         return self.fft(cdgmm3d(f_input, filter), inverse=True, normalized=True)
 
     def _low_pass_filter(self, input, i_j):
-        cuda = isinstance(input, torch.cuda.FloatTensor)
+        cuda = is_cuda_float_tensor(input)
         low_pass = self.gaussian_filters[i_j].type(torch.cuda.FloatTensor) if cuda else self.gaussian_filters[i_j]
         return self._fft_convolve(input, low_pass)
 
@@ -58,7 +58,7 @@ class SolidHarmonicScattering(object):
             return self._compute_standard_scattering_coefs(input)
 
     def _rotation_covariant_convolution_and_modulus(self, input, l, i_j, fourier_input=False):
-        cuda = isinstance(input, torch.cuda.FloatTensor)
+        cuda = is_cuda_float_tensor(input)
         filters_l_j = self.filters[l][i_j].type(torch.cuda.FloatTensor) if cuda else self.filters[l][i_j]
         convolution_modulus = input.new(input.size()).fill_(0)
         for m in range(filters_l_j.size(0)):
@@ -67,7 +67,7 @@ class SolidHarmonicScattering(object):
 
     def _rotation_covariant_correlation(self, input, l, fourier_input=False):
         batch_size, M, N, O, _ = input.size()
-        cuda = isinstance(input, torch.cuda.FloatTensor)
+        cuda = is_cuda_float_tensor(input)
         convolutions = input.new(batch_size, len(self.j_values), 2*l+1, M, N, O, 2).fill_(0)
         for i_j in range(len(self.j_values)):
             filters_l_j = self.filters[l][i_j].type(torch.cuda.FloatTensor) if cuda else self.filters[l][i_j]
@@ -89,7 +89,7 @@ class SolidHarmonicScattering(object):
 
 
     def _convolution_and_modulus(self, input, l, i_j, m=0):
-        cuda = isinstance(input, torch.cuda.FloatTensor)
+        cuda = is_cuda_float_tensor(input)
         filters_l_m_j = self.filters[l][i_j][m].type(torch.cuda.FloatTensor) if cuda else self.filters[l][i_j][m]
         return complex_modulus(self._fft_convolve(input, filters_l_m_j))
 

@@ -1,16 +1,21 @@
 """Author: Louis Thiry, All rights reserved, 2018."""
 from collections import defaultdict
 
-try:
-    from skcuda import cufft
-    CUDA = True
-except ImportError as err:
-    CUDA = False
-    print('skcuda import error {}, GPU version not working'.format(err))
-
 import torch
 import numpy as np
 import pyfftw
+
+if torch.cuda.is_available():
+    from cufft import cufftPlanMany, CUFFT_FORWARD, CUFFT_INVERSE, CUFFT_C2C, CUFFT_Z2Z, cufftExecC2C
+    CUDA = True
+else:
+    print('CUDA not available in torch, GPU version will not work')
+    CUDA = False
+
+def is_cuda_float_tensor(tensor):
+    if not CUDA:
+        return False
+    return isinstance(tensor, torch.cuda.FloatTensor)
 
 
 def generate_weighted_sum_of_diracs(positions, weights, M, N, O, sigma_dirac=0.4):
@@ -47,7 +52,7 @@ def generate_large_weighted_sum_of_gaussians(positions, weights, M, N, O, fourie
 
 def generate_weighted_sum_of_gaussians_in_fourier_space(grid, positions, weights, sigma, cuda=False):
     _, M, N, O = grid.size()
-    if cuda and CUDA:
+    if cuda:
         signals = torch.cuda.FloatTensor(positions.size(0), M, N, O, 2).fill_(0)
     else:
         signals = torch.FloatTensor(positions.size(0), M, N, O, 2).fill_(0)
@@ -70,7 +75,7 @@ def generate_weighted_sum_of_gaussians_in_fourier_space(grid, positions, weights
 
 def generate_weighted_sum_of_gaussians(grid, positions, weights, sigma, cuda=False):
     _, M, N, O = grid.size()
-    if cuda and CUDA:
+    if cuda:
         signals = torch.cuda.FloatTensor(positions.size(0), M, N, O).fill_(0)
     else:
         signals = torch.FloatTensor(positions.size(0), M, N, O).fill_(0)
@@ -123,13 +128,6 @@ def double_factorial(l):
     return 1 if (l < 1) else np.prod(np.arange(l, 0, -2))
 
 
-def getDtype(t):
-    if isinstance(t, torch.cuda.FloatTensor):
-        return 'float'
-    elif isinstance(t, torch.cuda.DoubleTensor):
-        return 'double'
-
-
 def iscomplex(input):
     return input.size(-1) == 2
 
@@ -158,7 +156,7 @@ class Fft3d(object):
         odist = idist
         rank = 3
         print(rank, signal_dims.ctypes.data, signal_dims.ctypes.data, istride, idist, signal_dims.ctypes.data, ostride, odist, type, batch)
-        plan = cufft.cufftPlanMany(rank, signal_dims.ctypes.data, signal_dims.ctypes.data,
+        plan = cufftPlanMany(rank, signal_dims.ctypes.data, signal_dims.ctypes.data,
                                    istride, idist, signal_dims.ctypes.data, ostride, odist, type, batch)
         self.cufft_cache[(input.size(), type, input.get_device())] = plan
 
@@ -172,7 +170,7 @@ class Fft3d(object):
         self.fftw_cache[(input.size(), inverse)] = (fftw_input_array, fftw_output_array, fftw_object)
 
     def __call__(self, input, inverse=False, normalized=False):
-        if not isinstance(input, torch.cuda.FloatTensor):
+        if not is_cuda_float_tensor(input):
             if not isinstance(input, (torch.FloatTensor, torch.DoubleTensor)):
                 raise(TypeError('The input should be a torch.cuda.FloatTensor, \
                                 torch.FloatTensor or a torch.DoubleTensor'))
@@ -190,11 +188,11 @@ class Fft3d(object):
 
         assert input.is_contiguous()
         output = input.new(input.size())
-        flag = cufft.CUFFT_INVERSE if inverse else cufft.CUFFT_FORWARD
-        ffttype = cufft.CUFFT_C2C if isinstance(input, torch.cuda.FloatTensor) else cufft.CUFFT_Z2Z
+        flag = CUFFT_INVERSE if inverse else CUFFT_FORWARD
+        ffttype = CUFFT_C2C if isinstance(input, torch.cuda.FloatTensor) else CUFFT_Z2Z
         if (self.cufft_cache[(input.size(), ffttype, input.get_device())] is None):
             self.buildCufftCache(input, ffttype)
-        cufft.cufftExecC2C(self.cufft_cache[(input.size(), ffttype, input.get_device())],
+        cufftExecC2C(self.cufft_cache[(input.size(), ffttype, input.get_device())],
                            input.data_ptr(), output.data_ptr(), flag)
         if normalized:
             output /= input.size(1) * input.size(2) * input.size(3)
