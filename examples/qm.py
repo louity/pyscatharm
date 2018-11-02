@@ -23,17 +23,22 @@ fourier_grid_np = np.mgrid[-M//2:-M//2+M, -N//2:-N//2+N, -O//2:-O//2+O].astype('
 fourier_grid_np[0] *= 2*np.pi / M
 fourier_grid_np[1] *= 2*np.pi / N
 fourier_grid_np[2] *= 2*np.pi / O
-
 fourier_grid = torch.from_numpy(np.fft.ifftshift(fourier_grid_np, axes=(1,2,3)))
-if cuda:
-    fourier_grid = fourier_grid.cuda()
+
 overlapping_precision = 1e-1
 sigma = 1.5
-j_values, L = [0, 1, 2], 3
+j_values, L = [0, 1, 2], 2
 integral_powers = [0.5, 1., 2., 3.]
 args = {'integral_powers': integral_powers}
 pos, atomic_numbers, atom_valences, electron_valences = get_qm_positions_energies_and_charges(
         sigma, overlapping_precision, database=database)
+
+if cuda:
+    fourier_grid = fourier_grid.cuda()
+    pos = pos.cuda()
+    atomic_numbers = atomic_numbers.cuda()
+    atom_valences = atom_valences.cuda()
+    electron_valences = electron_valences.cuda()
 
 n_molecules = pos.size(0)
 n_batches = np.ceil(n_molecules / batch_size).astype(int)

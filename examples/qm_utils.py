@@ -87,10 +87,10 @@ def get_qm_positions_energies_and_charges(sigma, overlapping_precision, database
         qm = load_qm9(align=True)
     else:
         raise ValueError('only qm7 and qm9 databases')
-    positions = qm.R
-    atomic_numbers = qm.Z
-    atom_valences = get_atom_valences(atomic_numbers)
-    electron_valences = get_electron_valences(atomic_numbers)
+    positions = qm.R.astype('float32')
+    atomic_numbers = qm.Z.astype('float32')
+    atom_valences = get_atom_valences(atomic_numbers).astype('float32')
+    electron_valences = get_electron_valences(atomic_numbers).astype('float32')
 
     min_dist = np.inf
     for i in range(positions.shape[0]):
