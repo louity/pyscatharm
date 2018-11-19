@@ -22,8 +22,10 @@ class SolidHarmonicScattering(object):
         self.M, self.N, self.O, self.j_values, self.L, self.sigma_0 = M, N, O, j_values, L, sigma_0
         if fourier_grid is not None:
             self.filters = solid_harmonic_filters_bank(self.M, self.N, self.O, self.j_values, self.L, sigma_0, fourier_grid=fourier_grid)
+            #TODO: add gaussian filters computations
         else:
             self.filters = solid_harmonic_filters_bank(self.M, self.N, self.O, self.j_values, self.L, sigma_0)
+            self.gaussian_filters = gaussian_filters_bank(self.M, self.N, self.O, self.j_values, sigma_0)
         self.fft = Fft3d()
 
     def _fft_convolve(self, input, filter, fourier_input=False):
