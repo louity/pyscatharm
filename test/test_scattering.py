@@ -53,16 +53,20 @@ class TestScattering(unittest.TestCase):
             if gpu:
                 _grid = grid.cuda()
                 _fourier_grid = fourier_grid.cuda()
+                _positions = positions.cuda()
+                _weights = weights.cuda()
             else:
                 _grid = grid
                 _fourier_grid = fourier_grid
+                _positions = positions
+                _weights = weights
             sum_of_gauss = sl.generate_weighted_sum_of_gaussians(
-                _grid, positions, weights, sigma, cuda=gpu)
+                _grid, _positions, _weights, sigma, cuda=gpu)
             sum_of_gauss_fourier = sl.generate_weighted_sum_of_gaussians_in_fourier_space(
-                _fourier_grid, positions, weights, sigma, cuda=gpu)
+                _fourier_grid, _positions, _weights, sigma, cuda=gpu)
             sum_of_gauss_ = fft3d(sum_of_gauss_fourier, inverse=True, normalized=True)[..., 0]
             difference = float(torch.norm(sum_of_gauss - sum_of_gauss_))
-            self.assertAlmostEqual(difference, 1, places=5)
+            self.assertAlmostEqual(difference, 0., places=5)
 
 
     def testSolidHarmonicFFT3d(self):
