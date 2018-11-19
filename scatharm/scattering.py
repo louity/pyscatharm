@@ -17,11 +17,13 @@ class SolidHarmonicScattering(object):
         j_values: values for the scale parameter j
         L: number of l values
     """
-    def __init__(self, M, N, O, j_values, L, sigma_0):
+    def __init__(self, M, N, O, j_values, L, sigma_0, fourier_grid=None):
         super(SolidHarmonicScattering, self).__init__()
         self.M, self.N, self.O, self.j_values, self.L, self.sigma_0 = M, N, O, j_values, L, sigma_0
-        self.filters = solid_harmonic_filters_bank(self.M, self.N, self.O, self.j_values, self.L, sigma_0)
-        self.gaussian_filters = gaussian_filters_bank(self.M, self.N, self.O, self.j_values, sigma_0)
+        if fourier_grid is not None:
+            self.filters = solid_harmonic_filters_bank(self.M, self.N, self.O, self.j_values, self.L, sigma_0, fourier_grid=fourier_grid)
+        else:
+            self.filters = solid_harmonic_filters_bank(self.M, self.N, self.O, self.j_values, self.L, sigma_0)
         self.fft = Fft3d()
 
     def _fft_convolve(self, input, filter, fourier_input=False):
@@ -113,7 +115,7 @@ class SolidHarmonicScattering(object):
             if (input.dim() != 4):
                 raise (RuntimeError('Input tensor must be 4D'))
 
-    def forward(self, input, fourier_input=False, order_2=True, operator='rotation_covariant_convolution', method='standard', method_args=None):
+    def forward(self, input, fourier_input=False, order_2=True, operator='rotation_covariant_convolution', method='standard', method_args=None, order_2_integer_j=False):
         self._check_input(input, fourier_input=fourier_input)
 
         if operator == 'rotation_covariant_convolution':
@@ -146,6 +148,8 @@ class SolidHarmonicScattering(object):
                 if not order_2:
                     continue
                 for i_j2 in range(i_j1+1, len(self.j_values)):
+                    if order_2_integer_j and int(self.j_values[i_j2]) != self.j_values[i_j2]:
+                        continue
                     conv_modulus_2 = convolution_and_modulus(conv_modulus, l, i_j2)
                     s_order_2_l.append(compute_scattering_coefs(conv_modulus_2, method, method_args))
             s_order_1.append(torch.cat(s_order_1_l, -1))
@@ -156,6 +160,4 @@ class SolidHarmonicScattering(object):
             return s_order_0, torch.stack(s_order_1, dim=-1), torch.stack(s_order_2, dim=-1)
         return s_order_0, torch.stack(s_order_1, dim=-1)
 
-    def __call__(self, input, fourier_input=False, order_2=False, operator='rotation_covariant_convolution', method='standard', method_args=None):
-        return self.forward(input, fourier_input=fourier_input, order_2=order_2, operator=operator,
-                            method=method, method_args=method_args)
+    __call__ = forward

@@ -11,13 +11,16 @@ from scipy.special import sph_harm, factorial
 from .utils import get_3d_angles, double_factorial
 
 
-def solid_harmonic_filters_bank(M, N, O, j_values, L, sigma_0, fourier=True):
+def solid_harmonic_filters_bank(M, N, O, j_values, L, sigma_0, fourier=True, fourier_grid=None):
     filters = []
     for l in range(L+1):
         filters_l = np.zeros((len(j_values), 2*l+1, M, N, O, 2), dtype='float32')
         for i_j, j in enumerate(j_values):
             sigma = sigma_0 * 2**j
-            solid_harm = solid_harmonic_3d(M, N, O, sigma, l, fourier=fourier)
+            if fourier_grid is not None:
+                solid_harm = solid_harmonic_3d(M, N, O, sigma, l, fourier=True, fourier_grid=fourier_grid)
+            else:
+                solid_harm = solid_harmonic_3d(M, N, O, sigma, l, fourier=fourier)
             filters_l[i_j, :, :, :, :, 0] = solid_harm.real
             filters_l[i_j, :, :, :, :, 1] = solid_harm.imag
         filters.append(torch.from_numpy(filters_l))
@@ -51,7 +54,7 @@ def gaussian_3d(M, N, O, sigma, fourier=True):
     return np.fft.ifftshift(gaussian)
 
 
-def solid_harmonic_3d(M, N, O, sigma, l, fourier=True, align_max=False):
+def solid_harmonic_3d(M, N, O, sigma, l, fourier=True, align_max=False, fourier_grid=None):
     """Computes solid harmonic wavelets in Fourier or signal space.
 
     Input args:
@@ -75,10 +78,13 @@ def solid_harmonic_3d(M, N, O, sigma, l, fourier=True, align_max=False):
         _sigma /= np.sqrt(l)
 
     if fourier:
-        grid[0] *= 2 * np.pi / M
-        grid[1] *= 2 * np.pi / N
-        grid[2] *= 2 * np.pi / O
         _sigma = 1. / _sigma
+        if fourier_grid is not None:
+            grid = fourier_grid
+        else:
+            grid[0] *= 2 * np.pi / M
+            grid[1] *= 2 * np.pi / N
+            grid[2] *= 2 * np.pi / O
 
     r_square = (grid**2).sum(0)
     r_power_l = np.sqrt(r_square)**l
