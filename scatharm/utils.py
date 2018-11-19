@@ -6,7 +6,8 @@ import numpy as np
 import pyfftw
 
 if torch.cuda.is_available():
-    from .cufft import cufftPlanMany, CUFFT_FORWARD, CUFFT_INVERSE, CUFFT_C2C, CUFFT_Z2Z, cufftExecC2C
+    from .skcuda_utils import cufft
+    from .skcuda_utils import cublas
     CUDA = True
 else:
     print('CUDA not available in torch, GPU version will not work')
@@ -156,7 +157,7 @@ class Fft3d(object):
         odist = idist
         rank = 3
         print(rank, signal_dims.ctypes.data, signal_dims.ctypes.data, istride, idist, signal_dims.ctypes.data, ostride, odist, type, batch)
-        plan = cufftPlanMany(rank, signal_dims.ctypes.data, signal_dims.ctypes.data,
+        plan = cufft.cufftPlanMany(rank, signal_dims.ctypes.data, signal_dims.ctypes.data,
                                    istride, idist, signal_dims.ctypes.data, ostride, odist, type, batch)
         self.cufft_cache[(input.size(), type, input.get_device())] = plan
 
@@ -188,19 +189,38 @@ class Fft3d(object):
 
         assert input.is_contiguous()
         output = input.new(input.size())
-        flag = CUFFT_INVERSE if inverse else CUFFT_FORWARD
-        ffttype = CUFFT_C2C if isinstance(input, torch.cuda.FloatTensor) else CUFFT_Z2Z
+        flag = cufft.CUFFT_INVERSE if inverse else cufft.CUFFT_FORWARD
+        ffttype = cufft.CUFFT_C2C if isinstance(input, torch.cuda.FloatTensor) else cufft.CUFFT_Z2Z
         if (self.cufft_cache[(input.size(), ffttype, input.get_device())] is None):
             self.buildCufftCache(input, ffttype)
-        cufftExecC2C(self.cufft_cache[(input.size(), ffttype, input.get_device())],
+        cufft.cufftExecC2C(self.cufft_cache[(input.size(), ffttype, input.get_device())],
                            input.data_ptr(), output.data_ptr(), flag)
         if normalized:
             output /= input.size(1) * input.size(2) * input.size(3)
         return output
 
 
-def cdgmm3d(A, B, conjugate=False):
-    """Pointwise multiplication of complex tensors."""
+def cdgmm3d(A, B, inplace=False, conjugate=False, use_cublas=True):
+    """
+        Complex pointwise multiplication between (batched) tensor A and tensor B.
+        Parameters
+        ----------
+        A : tensor
+            input tensor with size (batch_size, M, N, O, 2)
+        B : tensor
+            B is a complex tensor of size (M, N, O, 2)
+        inplace : boolean, optional
+            if set to True, all the operations are performed inplace
+        conjugate : boolean, optional
+            if set to True, B in complex conjugated
+        conjugate : boolean, optional
+            if set to True, use cublas Cdgmm
+        Returns
+        -------
+        C : tensor
+            output tensor of size (batch_size, M, N, O, 2) such that:
+            C[b, m, n, o, :] = A[b, m, n, o, :] * B[m, n, o,:]
+    """
     A, B = A.contiguous(), B.contiguous()
 
     if A.size()[-4:] != B.size():
@@ -215,6 +235,18 @@ def cdgmm3d(A, B, conjugate=False):
     if type(A) is not type(B):
         raise RuntimeError('A and B should be same type!')
 
+    if use_cublas and is_cuda_float_tensor(A) and is_cuda_float_tensor(B):
+        C = A.new(A.size()) if not inplace else A
+        m, n = B.nelement() // 2, A.nelement() // B.nelement()
+        lda = m
+        ldc = m
+        incx = 1
+        handle = torch.cuda.current_blas_handle()
+        stream = torch.cuda.current_stream()._as_parameter_
+        cublas.cublasSetStream(handle, stream)
+        cublas.cublasCdgmm(handle, 'l', m, n, A.data_ptr(), lda, B.data_ptr(), incx, C.data_ptr(), ldc)
+        return C
+
     C = A.new(A.size())
 
     if conjugate:
@@ -224,4 +256,5 @@ def cdgmm3d(A, B, conjugate=False):
 
     C[..., 0] = A[..., 0] * B[..., 0] - A[..., 1] * B[..., 1]
     C[..., 1] = A[..., 0] * B[..., 1] + A[..., 1] * B[..., 0]
-    return C
+
+    return C if not inplace else A.copy_(C)
