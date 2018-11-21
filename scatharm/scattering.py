@@ -69,33 +69,12 @@ class SolidHarmonicScattering(object):
             convolution_modulus[..., 0] += (self._fft_convolve(input, filters_l_j[m], fourier_input=fourier_input)**2).sum(-1)
         return torch.sqrt(convolution_modulus)
 
-    def _rotation_covariant_correlation(self, input, l, fourier_input=False):
-        batch_size, M, N, O, _ = input.size()
-        cuda = is_cuda_float_tensor(input)
-        convolutions = input.new(batch_size, len(self.j_values), 2*l+1, M, N, O, 2).fill_(0)
-        for i_j in range(len(self.j_values)):
-            filters_l_j = self.filters[l][i_j].type(torch.cuda.FloatTensor) if cuda else self.filters[l][i_j]
-            for m in range(filters_l_j.size(0)):
-                convolutions[:, i_j, m] = self._fft_convolve(input, filters_l_j[m], fourier_input=fourier_input)
-
-        #NOTE: transfer all computed convolutions to CPU ?
-        n_j = len(self.j_values)
-        correlations = input.new(batch_size, n_j + n_j*(n_j+1)//2, M, N, O).fill_(0)
-        i = n_j
-        for i_j1 in range(len(self.j_values)):
-            for m in range(2*l+1):
-                correlations[:,i_j1] = (convolutions[:, i_j1, m]**2).sum(-1)
-            for i_j2 in range(i_j1+1, len(self.j_values)):
-                for m in range(2*l+1):
-                    correlations[:,i] += cdgmm3d(convolutions[:, i_j1, m], convolutions[:, i_j2, m], conjugate=True)
-                i += 1
-        return correlations
-
 
     def _convolution_and_modulus(self, input, l, i_j, m=0):
         cuda = is_cuda_float_tensor(input)
         filters_l_m_j = self.filters[l][i_j][m].type(torch.cuda.FloatTensor) if cuda else self.filters[l][i_j][m]
         return complex_modulus(self._fft_convolve(input, filters_l_m_j))
+
 
     def _check_input(self, input, fourier_input=False):
         if not torch.is_tensor(input):
@@ -122,8 +101,6 @@ class SolidHarmonicScattering(object):
 
         if operator == 'rotation_covariant_convolution':
             convolution_and_modulus = self._rotation_covariant_convolution_and_modulus
-        elif operator == 'rotation_covariant_correlation':
-            convolution_and_modulus = self._rotation_covariant_correlation
         elif operator == 'convolution':
             convolution_and_modulus = self._convolution_and_modulus
         else:
