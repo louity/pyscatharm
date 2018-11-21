@@ -6,12 +6,10 @@ PyTorch implementation of Solid Harmonic Scattering for 3D signals
 A scattering network is a Convolutional Network with filters predefined to be wavelets that are not learned.
 Intially designed in vision task such as classification of images using 2D gabor wavelets, this 3D version using solid harmonic wavelets gave close to state of the art results in molecular properties regression from the dataset QM9.
 
-The software uses NumPy with PyTorch + PyFFTW on CPU, and PyTorch + CuFFT on GPU.
+The software uses NumPy, Scipy and PyTorch.
+Since Pytorch FFT use Intel MKL FFT on CPU, CPU version only works on Intel CPU.
+Since Pytorch FFT use CUDA on GPU, GPU version only works on Nvidia GPU.
 
-This code was very largely inspired by [*PyScatWave*](https://github.com/edouardoyallon/pyscatwave) by E. Oyallon, E. Belilovsky, S. Zagoruyko, [*Scaling the Scattering Transform: Deep Hybrid Networks*](https://arxiv.org/abs/1703.08961)
-
-## Benchmarks
-TODO
 
 ## Installation
 
@@ -21,8 +19,6 @@ various GPUs, including Titan X, 1080s, 980s, K20s, and Titan X Pascal.
 For the GPU version, you need to install [CUDA](https://developer.nvidia.com/cuda-downloads).
 
 For the CPU version you need to install FFTW3.
-On Ubuntu :
-```sudo apt-get install libfftw3-dev libfftw3-doc```
 
 Install [PyTorch](https://pytorch.org/get-started/locally/).
 Then install the requirements:
@@ -73,4 +69,4 @@ All contributions are welcome.
 
 ## Authors
 
-Louis Thiry, based on code by Edouard Oyallon, Eugene Belilovsky and Sergey Zagoruyko
+Louis Thiry inspired by code from Edouard Oyallon, Eugene Belilovsky and Sergey Zagoruyko

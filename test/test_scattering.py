@@ -23,8 +23,7 @@ class TestScattering(unittest.TestCase):
                 x = x.cuda()
 
             a = x.sum()
-            fft3d = sl.Fft3d()
-            y = fft3d(x)
+            y = sl.fft(x)
             c = y[:,0,0,0].sum()
             self.assertAlmostEqual(float(a), float(c), places=6)
 
@@ -47,7 +46,6 @@ class TestScattering(unittest.TestCase):
         positions[...,2].fill_(0)
         weights = torch.FloatTensor(1, n_gaussians).uniform_(1, 10)
 
-        fft3d = sl.Fft3d()
 
         for gpu in gpu_flags:
             if gpu:
@@ -64,7 +62,7 @@ class TestScattering(unittest.TestCase):
                 _grid, _positions, _weights, sigma, cuda=gpu)
             sum_of_gauss_fourier = sl.generate_weighted_sum_of_gaussians_in_fourier_space(
                 _fourier_grid, _positions, _weights, sigma, cuda=gpu)
-            sum_of_gauss_ = fft3d(sum_of_gauss_fourier, inverse=True, normalized=True)[..., 0]
+            sum_of_gauss_ = sl.fft(sum_of_gauss_fourier, inverse=True)[..., 0]
             difference = float(torch.norm(sum_of_gauss - sum_of_gauss_))
             self.assertAlmostEqual(difference, 0., places=5)
 
@@ -76,7 +74,6 @@ class TestScattering(unittest.TestCase):
         j_values = [0]
         solid_harmonics = solid_harmonic_filters_bank(M, N, O, j_values, L, sigma, fourier=False)
         solid_harmonics_fourier = solid_harmonic_filters_bank(M, N, O, j_values, L, sigma, fourier=True)
-        fft3d = sl.Fft3d()
         for gpu in gpu_flags:
             for l in range(L+1):
                 for m in range(2*l+1):
@@ -85,7 +82,7 @@ class TestScattering(unittest.TestCase):
                     if gpu:
                         solid_harm = solid_harm.cuda()
                         solid_harm_fourier = solid_harm_fourier.cuda()
-                    solid_harm_ = fft3d(solid_harm_fourier, inverse=True, normalized=True)
+                    solid_harm_ = sl.fft(solid_harm_fourier, inverse=True)
                     difference = float(torch.norm(solid_harm - solid_harm_))
                     self.assertAlmostEqual(difference, 0, places=7)
 

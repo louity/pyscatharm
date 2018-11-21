@@ -1,17 +1,17 @@
 """Author: Louis Thiry, All rights reserved, 2018."""
-from collections import defaultdict
 
 import torch
 import numpy as np
-import pyfftw
 
 if torch.cuda.is_available():
-    from .skcuda_utils import cufft
     from .skcuda_utils import cublas
     CUDA = True
 else:
     print('CUDA not available in torch, GPU version will not work')
     CUDA = False
+
+if not torch.backends.mkl.is_available():
+    print('MKL not available in torch, CPU version will not work')
 
 def is_cuda_float_tensor(tensor):
     if not CUDA:
@@ -41,14 +41,12 @@ def generate_weighted_sum_of_diracs(positions, weights, M, N, O, sigma_dirac=0.4
     return signals
 
 
-def generate_large_weighted_sum_of_gaussians(positions, weights, M, N, O, fourier_gaussian, fft=None):
+def generate_large_weighted_sum_of_gaussians(positions, weights, M, N, O, fourier_gaussian):
     n_signals = positions.shape[0]
     signals = torch.FloatTensor(n_signals, M, N, O, 2).fill_(0)
     signals[..., 0] = generate_weighted_sum_of_diracs(positions, weights, M, N, O)
 
-    if fft is None:
-        fft = Fft3d()
-    return fft(cdgmm3d(fft(signals, inverse=False), fourier_gaussian), inverse=True, normalized=True)[..., 0]
+    return fft(cdgmm3d(fft(signals, inverse=False), fourier_gaussian), inverse=True)[..., 0]
 
 
 def generate_weighted_sum_of_gaussians_in_fourier_space(grid, positions, weights, sigma, cuda=False):
@@ -139,65 +137,26 @@ def to_complex(input):
     return output
 
 
-class Fft3d(object):
-    """This class builds a wrapper to 3D FFTW on CPU / cuFFT on nvidia GPU."""
-
-    def __init__(self, n_fftw_threads=8):
-        self.n_fftw_threads = n_fftw_threads
-        self.fftw_cache = defaultdict(lambda: None)
-        self.cufft_cache = defaultdict(lambda: None)
-
-    def buildCufftCache(self, input, type):
-        batch_size, M, N, O, _ = input.size()
-        signal_dims = np.asarray([M, N, O], np.int32)
-        batch = batch_size
-        idist = M * N * O
-        istride = 1
-        ostride = istride
-        odist = idist
-        rank = 3
-        print(rank, signal_dims.ctypes.data, signal_dims.ctypes.data, istride, idist, signal_dims.ctypes.data, ostride, odist, type, batch)
-        plan = cufft.cufftPlanMany(rank, signal_dims.ctypes.data, signal_dims.ctypes.data,
-                                   istride, idist, signal_dims.ctypes.data, ostride, odist, type, batch)
-        self.cufft_cache[(input.size(), type, input.get_device())] = plan
-
-    def buildFftwCache(self, input, inverse):
-        direction = 'FFTW_BACKWARD' if inverse else 'FFTW_FORWARD'
-        batch_size, M, N, O, _ = input.size()
-        fftw_input_array = pyfftw.empty_aligned((batch_size, M, N, O), dtype='complex64')
-        fftw_output_array = pyfftw.empty_aligned((batch_size, M, N, O), dtype='complex64')
-        fftw_object = pyfftw.FFTW(fftw_input_array, fftw_output_array, axes=(1, 2, 3), direction=direction,
-                                  threads=self.n_fftw_threads)
-        self.fftw_cache[(input.size(), inverse)] = (fftw_input_array, fftw_output_array, fftw_object)
-
-    def __call__(self, input, inverse=False, normalized=False):
-        if not is_cuda_float_tensor(input):
-            if not isinstance(input, (torch.FloatTensor, torch.DoubleTensor)):
-                raise(TypeError('The input should be a torch.cuda.FloatTensor, \
-                                torch.FloatTensor or a torch.DoubleTensor'))
-            else:
-                f = lambda x: np.stack([x.real, x.imag], axis=len(x.shape))
-                if(self.fftw_cache[(input.size(), inverse)] is None):
-                    self.buildFftwCache(input, inverse)
-                input_arr, output_arr, fftw_obj = self.fftw_cache[(input.size(), inverse)]
-
-                input_arr.real[:] = input[..., 0]
-                input_arr.imag[:] = input[..., 1]
-                fftw_obj()
-
-                return torch.from_numpy(f(output_arr))
-
-        assert input.is_contiguous()
-        output = input.new(input.size())
-        flag = cufft.CUFFT_INVERSE if inverse else cufft.CUFFT_FORWARD
-        ffttype = cufft.CUFFT_C2C if isinstance(input, torch.cuda.FloatTensor) else cufft.CUFFT_Z2Z
-        if (self.cufft_cache[(input.size(), ffttype, input.get_device())] is None):
-            self.buildCufftCache(input, ffttype)
-        cufft.cufftExecC2C(self.cufft_cache[(input.size(), ffttype, input.get_device())],
-                           input.data_ptr(), output.data_ptr(), flag)
-        if normalized:
-            output /= input.size(1) * input.size(2) * input.size(3)
-        return output
+def fft(input, inverse=False):
+    """
+        fft of a 3d signal
+        Example
+        -------
+        x = torch.randn(128, 32, 32, 32, 2)
+        x_fft = fft(x, inverse=True)
+        Parameters
+        ----------
+        input : tensor
+            complex input for the FFT
+        inverse : bool
+            True for computing the inverse FFT.
+.
+    """
+    if not iscomplex(input):
+        raise(TypeError('The input should be complex (e.g. last dimension is 2)'))
+    if inverse:
+        return torch.ifft(input, 3)
+    return torch.fft(input, 3)
 
 
 def cdgmm3d(A, B, inplace=False, conjugate=False, use_cublas=True):

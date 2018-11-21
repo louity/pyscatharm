@@ -3,7 +3,7 @@
 __all__ = ['SolidHarmonicScattering']
 
 import torch
-from .utils import is_cuda_float_tensor, cdgmm3d, Fft3d, compute_integrals, subsample, complex_modulus, to_complex
+from .utils import is_cuda_float_tensor, cdgmm3d, compute_integrals, subsample, complex_modulus, to_complex, fft
 from .filters_bank import solid_harmonic_filters_bank, gaussian_filters_bank
 
 
@@ -17,7 +17,7 @@ class SolidHarmonicScattering(object):
         j_values: values for the scale parameter j
         L: number of l values
     """
-    def __init__(self, M, N, O, j_values, L, sigma_0, fourier_grid=None):
+    def __init__(self, M, N, O, j_values, L, sigma_0, fourier_grid=None, use_torch_fft=False):
         super(SolidHarmonicScattering, self).__init__()
         self.M, self.N, self.O, self.j_values, self.L, self.sigma_0 = M, N, O, j_values, L, sigma_0
         if fourier_grid is not None:
@@ -26,11 +26,11 @@ class SolidHarmonicScattering(object):
         else:
             self.filters = solid_harmonic_filters_bank(self.M, self.N, self.O, self.j_values, self.L, sigma_0)
             self.gaussian_filters = gaussian_filters_bank(self.M, self.N, self.O, self.j_values, sigma_0)
-        self.fft = Fft3d()
+        self.fft = fft
 
     def _fft_convolve(self, input, filter, fourier_input=False):
         f_input = input if fourier_input else self.fft(input, inverse=False)
-        return self.fft(cdgmm3d(f_input, filter), inverse=True, normalized=True)
+        return self.fft(cdgmm3d(f_input, filter), inverse=True)
 
     def _low_pass_filter(self, input, i_j):
         cuda = is_cuda_float_tensor(input)
@@ -134,7 +134,7 @@ class SolidHarmonicScattering(object):
         if fourier_input:
             _input = input
             s_order_0 = compute_scattering_coefs(
-                torch.abs(self.fft(_input, inverse=True, normalized=True)), method, method_args)
+                torch.abs(self.fft(_input, inverse=True)), method, method_args)
         else:
             _input = to_complex(input)
             s_order_0 = compute_scattering_coefs(_input, method, method_args)
