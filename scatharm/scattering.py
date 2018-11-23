@@ -96,6 +96,43 @@ class SolidHarmonicScattering(object):
             if (input.dim() != 4):
                 raise (RuntimeError('Input tensor must be 4D'))
 
+
+    def compute_heatmap(self, input, integral_powers, order_0_weights, order_1_weights,
+            order_2_weights=None, order_2=True, order_2_integer_j=False):
+        # self._check_input(input)
+
+        assert order_0_weights.shape == (len(integral_powers),), 'wrong shape for order_0_weights'
+        assert order_1_weights.shape == (len(integral_powers), len(self.j_values), self.L+1,), 'wrong shape for order_1_weights'
+
+        _input = to_complex(input)
+
+        convolution_and_modulus = self._rotation_covariant_convolution_and_modulus
+
+        heatmap = input.new(input.size()).fill_(0)
+
+        for i_q, q in enumerate(integral_powers):
+            heatmap += order_0_weights[i_q] * input**q
+
+
+        for l in range(self.L+1):
+            i_j2_weights = 0
+            for i_j1 in range(len(self.j_values)):
+                conv_modulus = convolution_and_modulus(_input, l, i_j1)
+                for i_q, q in enumerate(integral_powers):
+                    heatmap += (order_1_weights[i_q, i_j1, l] * conv_modulus**q)[...,0]
+                if not order_2:
+                    continue
+                for i_j2 in range(i_j1+1, len(self.j_values)):
+                    if order_2_integer_j and int(self.j_values[i_j2]) != self.j_values[i_j2]:
+                        continue
+                    conv_modulus_2 = convolution_and_modulus(conv_modulus, l, i_j2)
+                    for i_q, q in enumerate(integral_powers):
+                        heatmap += (order_2_weights[i_q, i_j2_weights, l] * conv_modulus_2**q)[...,0]
+                    i_j2_weights += 1
+
+        return heatmap
+
+
     def forward(self, input, fourier_input=False, order_2=True, operator='rotation_covariant_convolution', method='standard', method_args=None, order_2_integer_j=False):
         self._check_input(input, fourier_input=fourier_input)
 
@@ -109,6 +146,7 @@ class SolidHarmonicScattering(object):
         compute_scattering_coefs = self._compute_scattering_coefs
 
         if fourier_input:
+
             _input = input
             s_order_0 = compute_scattering_coefs(
                 torch.abs(self.fft(_input, inverse=True)), method, method_args)
