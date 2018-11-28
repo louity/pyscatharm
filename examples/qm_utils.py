@@ -60,6 +60,15 @@ def get_sigma_0_wavelet(sigma, overlapping_precision):
     return sigma * np.sqrt(-2 * np.log(overlapping_precision) - 1)
 
 
+def get_qm_energies(database='qm7', planar=False):
+    if database == 'qm7':
+        return load_qm7(align=True, only_planar=planar).T.transpose()
+    elif database == 'qm9':
+        return load_qm9(align=True, only_planar=planar).T.transpose()
+    else:
+        raise ValueError('only qm7 and qm9 databases')
+
+
 def get_qm_energies_and_folds(random_folds=False, database='qm7'):
     if database == 'qm7':
         qm = load_qm7(align=True)
@@ -80,11 +89,11 @@ def get_qm_energies_and_folds(random_folds=False, database='qm7'):
     return energies, cross_val_folds
 
 
-def get_qm_positions_energies_and_charges(sigma, overlapping_precision, database='qm7'):
+def get_qm_positions_energies_and_charges(sigma, overlapping_precision, database='qm7', planar=False):
     if database == 'qm7':
-        qm = load_qm7(align=True)
+        qm = load_qm7(align=True, only_planar=planar)
     elif database == 'qm9':
-        qm = load_qm9(align=True)
+        qm = load_qm9(align=True, only_planar=planar)
     else:
         raise ValueError('only qm7 and qm9 databases')
     positions = qm.R.astype('float32')
