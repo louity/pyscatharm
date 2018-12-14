@@ -159,9 +159,10 @@ def fft(input, inverse=False):
     return torch.fft(input, 3)
 
 
-def cdgmm3d(A, B, inplace=False, conjugate=False, use_cublas=True):
+def cdgmm3d(A, B, inplace=False, use_cublas=True):
     """
         Complex pointwise multiplication between (batched) tensor A and tensor B.
+
         Parameters
         ----------
         A : tensor
@@ -170,10 +171,10 @@ def cdgmm3d(A, B, inplace=False, conjugate=False, use_cublas=True):
             B is a complex tensor of size (M, N, O, 2)
         inplace : boolean, optional
             if set to True, all the operations are performed inplace
-        conjugate : boolean, optional
-            if set to True, B in complex conjugated
-        conjugate : boolean, optional
-            if set to True, use cublas Cdgmm
+        use_culbas : boolean, optional
+            if set to True, use cublas Cdgmm which is faster than pytorch,
+            but not autodifferentiable
+
         Returns
         -------
         C : tensor

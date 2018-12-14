@@ -15,8 +15,7 @@ class SolidHarmonicScattering(object):
     Input args:
         M, N, O: input 3D image size
         j_values: values for the scale parameter j
-        L: number of l values
-    """
+        L: number of l values """
     def __init__(self, M, N, O, j_values, L, sigma_0, fourier_grid=None, use_torch_fft=False):
         super(SolidHarmonicScattering, self).__init__()
         self.M, self.N, self.O, self.j_values, self.L, self.sigma_0 = M, N, O, j_values, L, sigma_0
@@ -145,8 +144,8 @@ class SolidHarmonicScattering(object):
 
         compute_scattering_coefs = self._compute_scattering_coefs
 
-        if fourier_input:
 
+        if fourier_input:
             _input = input
             s_order_0 = compute_scattering_coefs(
                 torch.abs(self.fft(_input, inverse=True)), method, method_args)
