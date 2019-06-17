@@ -11,9 +11,19 @@ from scipy.special import sph_harm, factorial
 from .utils import get_3d_angles, double_factorial
 
 
-def solid_harmonic_filters_bank(M, N, O, j_values, L, sigma_0, fourier=True, fourier_grid=None):
+def solid_harmonic_filters_bank(M, N, O, j_values, L, sigma_0, fourier=True, fourier_grid=None,
+                                radial_filter_type='gaussian'):
+    if radial_filter_type not in ['gaussian', 'difference_of_gaussian']:
+        raise ValueError('Invalid value for radial_filter_type : {}'.format(radial_filter_type))
     filters = []
-    for l in range(L+1):
+
+    if radial_filter_type == 'gaussian':
+        radial_filters = gaussian_filters_bank(M, N, O, j_values, sigma_0, fourier=fourier)
+    elif radial_filter_type == 'difference_of_gaussian':
+        radial_filters = gaussian_filters_bank(M, N, O, j_values, 2*sigma_0, fourier=fourier) - gaussian_filters_bank(M, N, O, j_values, sigma_0, fourier=fourier)
+    filters.append(radial_filters.view(len(j_values), 1, M, N, O, 2))
+
+    for l in range(1, L+1):
         filters_l = np.zeros((len(j_values), 2*l+1, M, N, O, 2), dtype='float32')
         for i_j, j in enumerate(j_values):
             sigma = sigma_0 * 2**j
